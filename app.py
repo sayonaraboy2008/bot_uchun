@@ -1,32 +1,28 @@
+# app.py
 import os
-import asyncio
 from flask import Flask, request
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
+from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 from datetime import datetime
+import asyncio
 
-# ==========================
-# ENV
-# ==========================
-BOT_TOKEN = os.environ["BOT_TOKEN"]         # Telegram bot token
-WEBHOOK_URL = os.environ["WEBHOOK_URL"]     # Deploy qilingan loyihaning live linki, masalan: https://yourapp.railway.app
-ADMIN_CHAT_ID = int(os.environ["ADMIN_CHAT_ID"])
-CHANNEL_ID = os.environ["CHANNEL_ID"]
+# =======================
+#  SOZLAMALAR
+# =======================
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "8101156971"))
+CHANNEL_ID = os.environ.get("CHANNEL_ID", "-100xxxxxxxxxx")
+WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://sizning-app.railway.app")
 
-# ==========================
-# Flask app
-# ==========================
+bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
 
-# ==========================
-# Ma'lumotlar
-# ==========================
 users_data = {}
 purchase_counter = 0
 
-# ==========================
-# Klaviatura
-# ==========================
+# =======================
+#  KLAVIATURA
+# =======================
 def get_keyboard(show_cancel=False):
     keyboard = [
         [KeyboardButton("/start")],
@@ -42,44 +38,47 @@ def generate_purchase_id():
     purchase_counter += 1
     return f"#{purchase_counter:06d}"
 
-# ==========================
-# Bot buyruqlari
-# ==========================
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# =======================
+#  HANDLERLAR
+# =======================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     username = user.username or str(user.id)
     if username not in users_data:
         users_data[username] = {"orders": []}
 
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Open 🌐", url=WEBHOOK_URL)]])
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Open 🌐", url=WEB_APP_URL)]])
     await update.message.reply_text(
-        f"Salom {user.first_name}!\nDastur ishga tushdi!\nBuyruqlar: /profile, /buy",
+        f"Salom {user.first_name}!\n\nDasturimizni ishga tushirish uchun pastdagi tugmani bosing.\n\nBuyruqlar paneli: /profile, /buy",
         reply_markup=keyboard
     )
 
-async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     username = user.username or str(user.id)
-    orders = users_data.get(username, {"orders": []})["orders"]
+    if username not in users_data:
+        users_data[username] = {"orders": []}
 
-    text = "👤 Profilingiz:\n\n🛒 Buyurtmalar tarixi:\n"
+    orders = users_data[username]["orders"]
+    profile_text = f"👤 Profilingiz:\n\n🛒 Buyurtmalar tarixi:\n"
     if orders:
-        for o in orders:
-            text += (
-                f"{o['purchase_id']} - {o['gift']}\n"
-                f"   Kim uchun: {o['for_user']}\n"
-                f"   Summasi: {o['amount']} so'm\n"
-                f"   Sana: {o['date']}\n"
-                f"   Holati: {o.get('status','kutmoqda')}\n\n"
+        for order in orders:
+            profile_text += (
+                f"{order['purchase_id']} - Gift: {order['gift']}\n"
+                f"   Kim uchun: {order['for_user']}\n"
+                f"   Summasi: {order['amount']} so'm\n"
+                f"   Sana: {order['date']}\n"
+                f"   Holati: {order.get('status','kutmoqda')}\n\n"
             )
     else:
-        text += "Siz hali hech narsa sotib olmadingiz."
-    await update.message.reply_text(text, reply_markup=get_keyboard())
+        profile_text += "Siz hali hech narsa sotib olmadingiz."
 
-async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(profile_text, reply_markup=get_keyboard())
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Xarid jarayoni bekor qilindi.", reply_markup=get_keyboard())
 
-async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     username = user.username or str(user.id)
     if username not in users_data:
@@ -97,121 +96,38 @@ async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     users_data[username]["orders"].append(order)
 
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Open 🌐", url=WEBHOOK_URL)]])
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Open 🌐", url=WEB_APP_URL)]])
     await update.message.reply_text(
-        f"Buyurtma yaratildi! ID: {purchase_id}\nPastdagi tugma orqali saytingizni oching va chek yuboring.",
+        f"Buyurtma yaratildi! ID: {purchase_id}\n\nPastdagi tugma orqali saytingizni oching va chek yuboring.",
         reply_markup=keyboard
     )
 
-# ==========================
-# Chek rasm qabul qilish
-# ==========================
-async def upload_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    username = user.username or str(user.id)
-
-    if not update.message.photo:
-        await update.message.reply_text("Iltimos, chek rasmini yuboring.")
-        return
-
-    if username not in users_data or not users_data[username]["orders"]:
-        await update.message.reply_text("Sizda buyurtma topilmadi. Avval /buy bering.")
-        return
-
-    order = users_data[username]["orders"][-1]
-    photo_file = await update.message.photo[-1].get_file()
-    os.makedirs("receipts", exist_ok=True)
-    file_path = f"receipts/{order['purchase_id']}.jpg"
-    await photo_file.download_to_drive(file_path)
-    order["receipt"] = file_path
-
-    admin_keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"approve_{username}_{order['purchase_id']}")],
-        [InlineKeyboardButton("❌ Rad etish", callback_data=f"deny_{username}_{order['purchase_id']}")],
-        [InlineKeyboardButton(f"ℹ️ {order['purchase_id']}", callback_data=f"info_{username}_{order['purchase_id']}")]
-    ])
-
-    await context.bot.send_photo(chat_id=ADMIN_CHAT_ID, photo=open(order['receipt'], "rb"),
-                                 caption=f"@{username} tomonidan yuborilgan xarid:\nGift: {order['gift']}\nKim uchun: {order['for_user']}\nSummasi: {order['amount']} so'm\nID: {order['purchase_id']}",
-                                 reply_markup=admin_keyboard)
-
-    msg = await context.bot.send_photo(chat_id=CHANNEL_ID, photo=open(order['receipt'], "rb"),
-                                       caption=f"📦 @{username} tomonidan yuborilgan xarid\nGift: {order['gift']}\nKim uchun: {order['for_user']}\nSummasi: {order['amount']} so'm\nStatus: {order['status']}\nID: {order['purchase_id']}",
-                                       reply_markup=admin_keyboard)
-    order["channel_msg_id"] = msg.message_id
-
-    await update.message.reply_text("Chek adminga yuborildi, tasdiqlanishini kuting.", reply_markup=get_keyboard(show_cancel=True))
-
-# ==========================
-# Admin callback
-# ==========================
-async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    data = query.data.split("_")
-    action, username, purchase_id = data[0], data[1], data[2]
-
-    if user_id != ADMIN_CHAT_ID:
-        await query.answer("Siz admin emassiz", show_alert=True)
-        return
-
-    order = next((o for o in users_data.get(username, {}).get("orders", []) if o["purchase_id"] == purchase_id), None)
-    if not order:
-        await query.answer("Xarid topilmadi", show_alert=True)
-        return
-
-    if action == "approve":
-        order["status"] = "tasdiqlangan"
-    elif action == "deny":
-        order["status"] = "bekor qilingan"
-    elif action == "info":
-        await query.answer(f"Xarid ID: {order['purchase_id']}\nGift: {order['gift']}\nKim uchun: {order['for_user']}\nSummasi: {order['amount']} so'm\nSana: {order['date']}\nStatus: {order['status']}", show_alert=True)
-        return
-
-    if not order.get("notified", False):
-        await context.bot.send_message(chat_id=order["user_id"], text=f"Xaridingiz status o‘zgardi:\nGift: {order['gift']}\nKim uchun: {order['for_user']}\nStatus: {order['status']}", reply_markup=get_keyboard())
-        order["notified"] = True
-
-    if order.get("channel_msg_id"):
-        await context.bot.edit_message_caption(chat_id=CHANNEL_ID, message_id=order["channel_msg_id"],
-                                             caption=f"📦 @{username} tomonidan yuborilgan xarid\nGift: {order['gift']}\nKim uchun: {order['for_user']}\nSummasi: {order['amount']} so'm\nStatus: {order['status']}\nID: {order['purchase_id']}")
-
-    await query.edit_message_caption(f"{query.message.caption}\n\nStatus: {order['status']}")
-
-# ==========================
-# Application
-# ==========================
-app_builder = ApplicationBuilder().token(BOT_TOKEN).build()
-app_builder.add_handler(CommandHandler("start", start_command))
-app_builder.add_handler(CommandHandler("profile", profile_command))
-app_builder.add_handler(CommandHandler("buy", buy_command))
-app_builder.add_handler(CommandHandler("cancel", cancel_command))
-app_builder.add_handler(MessageHandler(filters.PHOTO, upload_receipt))
-app_builder.add_handler(CallbackQueryHandler(admin_callback))
-
-# ==========================
-# Flask webhook
-# ==========================
-@app.route(f'/{BOT_TOKEN}', methods=['POST'])
-def telegram_webhook():
+# =======================
+#  FLASK ROUTE
+# =======================
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def webhook():
     data = request.get_json(force=True)
-    update = Update.de_json(data, app_builder.bot)
-    app_builder.update_queue.put(update)
-    return "OK", 200
+    update = Update.de_json(data, bot)
+    asyncio.run(dispatcher.process_update(update))
+    return "ok", 200
 
 @app.route("/")
 def home():
-    return "Bot ishga tushdi!", 200
+    return "Bot ishlayapti!", 200
 
-# ==========================
-# Webhookni avtomatik set qilish
-# ==========================
-asyncio.run(app_builder.bot.set_webhook(f"{WEBHOOK_URL}/{BOT_TOKEN}"))
+# =======================
+#  Telegram dispatcher
+# =======================
+dispatcher = ApplicationBuilder().token(BOT_TOKEN).build()
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CommandHandler("profile", profile))
+dispatcher.add_handler(CommandHandler("cancel", cancel))
+dispatcher.add_handler(CommandHandler("buy", buy))
 
-# ==========================
-# Flask ishga tushurish
-# ==========================
+# =======================
+#  APP ISHGA TUSHIRISH
+# =======================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
