@@ -1,25 +1,26 @@
-import os
 from flask import Flask, request
-from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
-from dotenv import load_dotenv
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 from datetime import datetime
+import os
 
-# -------------------------
-# .env faylni o'qish
-# -------------------------
-load_dotenv()
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID"))
-CHANNEL_ID = os.environ.get("CHANNEL_ID")
-WEB_APP_URL = os.environ.get("WEB_APP_URL")
+# ==========================
+#  SOZLAMALAR (hammasi shu yerda)
+# ==========================
+BOT_TOKEN = "8072038057:AAG76HusATaqMFZwZOPUbo2NCHKr0TYngGU"  # BotFather token
+ADMIN_CHAT_ID = 8101156971                                     # Admin ID
+CHANNEL_ID = "-1003402792259"                                   # Kanal ID
+WEB_APP_URL = "https://botuchun-production.up.railway.app"                 # Frontend URL
 
-# -------------------------
-# Ma'lumotlar
-# -------------------------
-users_data = {}
-purchase_counter = 0
+# ==========================
+#  MA'LUMOTLAR
+# ==========================
+users_data = {}  # Foydalanuvchilar ma'lumotlari
+purchase_counter = 0  # Buyurtma ID hisoblagichi
 
+# ==========================
+#  KLAVIATURA
+# ==========================
 def get_keyboard(show_cancel=False):
     keyboard = [
         [KeyboardButton("/start")],
@@ -35,14 +36,15 @@ def generate_purchase_id():
     purchase_counter += 1
     return f"#{purchase_counter:06d}"
 
-# -------------------------
-# Bot handlerlar
-# -------------------------
+# ==========================
+#  BOT HANDLERLAR
+# ==========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     username = user.username or str(user.id)
     if username not in users_data:
         users_data[username] = {"orders": []}
+
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Open 🌐", url=WEB_APP_URL)]])
     await update.message.reply_text(
         f"Salom {user.first_name}!\nDasturimizni ishga tushirish uchun pastdagi tugmani bosing.\nBuyruqlar paneli: /profile, /buy",
@@ -87,18 +89,20 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "user_id": user.id
     }
     users_data[username]["orders"].append(order)
+
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Open 🌐", url=WEB_APP_URL)]])
     await update.message.reply_text(
         f"Buyurtma yaratildi! ID: {purchase_id}\nPastdagi tugma orqali saytingizni oching va chek yuboring.",
         reply_markup=keyboard
     )
 
-# -------------------------
-# Flask server
-# -------------------------
+# ==========================
+#  FLASK SERVER
+# ==========================
 app = Flask(__name__)
 bot_app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+# Handlerlarni qo'shamiz
 bot_app.add_handler(CommandHandler("start", start))
 bot_app.add_handler(CommandHandler("profile", profile))
 bot_app.add_handler(CommandHandler("buy", buy))
@@ -113,6 +117,9 @@ def webhook():
 def home():
     return "Bot ishlayapti!", 200
 
+# ==========================
+#  SERVERNI ISHGA TUSHIRISH
+# ==========================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     print(f"Server ishga tushdi! PORT: {port}")
