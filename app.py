@@ -1,28 +1,25 @@
-# app.py
 import os
 from flask import Flask, request
 from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
+from dotenv import load_dotenv
 from datetime import datetime
-import asyncio
 
-# =======================
-#  SOZLAMALAR
-# =======================
+# -------------------------
+# .env faylni o'qish
+# -------------------------
+load_dotenv()
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "8101156971"))
-CHANNEL_ID = os.environ.get("CHANNEL_ID", "-100xxxxxxxxxx")
-WEB_APP_URL = os.environ.get("WEB_APP_URL", "https://sizning-app.railway.app")
+ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID"))
+CHANNEL_ID = os.environ.get("CHANNEL_ID")
+WEB_APP_URL = os.environ.get("WEB_APP_URL")
 
-bot = Bot(token=BOT_TOKEN)
-app = Flask(__name__)
-
+# -------------------------
+# Ma'lumotlar
+# -------------------------
 users_data = {}
 purchase_counter = 0
 
-# =======================
-#  KLAVIATURA
-# =======================
 def get_keyboard(show_cancel=False):
     keyboard = [
         [KeyboardButton("/start")],
@@ -38,18 +35,17 @@ def generate_purchase_id():
     purchase_counter += 1
     return f"#{purchase_counter:06d}"
 
-# =======================
-#  HANDLERLAR
-# =======================
+# -------------------------
+# Bot handlerlar
+# -------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     username = user.username or str(user.id)
     if username not in users_data:
         users_data[username] = {"orders": []}
-
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Open 🌐", url=WEB_APP_URL)]])
     await update.message.reply_text(
-        f"Salom {user.first_name}!\n\nDasturimizni ishga tushirish uchun pastdagi tugmani bosing.\n\nBuyruqlar paneli: /profile, /buy",
+        f"Salom {user.first_name}!\nDasturimizni ishga tushirish uchun pastdagi tugmani bosing.\nBuyruqlar paneli: /profile, /buy",
         reply_markup=keyboard
     )
 
@@ -72,11 +68,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     else:
         profile_text += "Siz hali hech narsa sotib olmadingiz."
-
     await update.message.reply_text(profile_text, reply_markup=get_keyboard())
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Xarid jarayoni bekor qilindi.", reply_markup=get_keyboard())
 
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -95,39 +87,33 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "user_id": user.id
     }
     users_data[username]["orders"].append(order)
-
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Open 🌐", url=WEB_APP_URL)]])
     await update.message.reply_text(
-        f"Buyurtma yaratildi! ID: {purchase_id}\n\nPastdagi tugma orqali saytingizni oching va chek yuboring.",
+        f"Buyurtma yaratildi! ID: {purchase_id}\nPastdagi tugma orqali saytingizni oching va chek yuboring.",
         reply_markup=keyboard
     )
 
-# =======================
-#  FLASK ROUTE
-# =======================
+# -------------------------
+# Flask server
+# -------------------------
+app = Flask(__name__)
+bot_app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+bot_app.add_handler(CommandHandler("start", start))
+bot_app.add_handler(CommandHandler("profile", profile))
+bot_app.add_handler(CommandHandler("buy", buy))
+
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
-    data = request.get_json(force=True)
-    update = Update.de_json(data, bot)
-    asyncio.run(dispatcher.process_update(update))
-    return "ok", 200
+    update = Update.de_json(request.get_json(force=True), bot_app.bot)
+    bot_app.process_update(update)
+    return "OK"
 
 @app.route("/")
 def home():
     return "Bot ishlayapti!", 200
 
-# =======================
-#  Telegram dispatcher
-# =======================
-dispatcher = ApplicationBuilder().token(BOT_TOKEN).build()
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CommandHandler("profile", profile))
-dispatcher.add_handler(CommandHandler("cancel", cancel))
-dispatcher.add_handler(CommandHandler("buy", buy))
-
-# =======================
-#  APP ISHGA TUSHIRISH
-# =======================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
+    print(f"Server ishga tushdi! PORT: {port}")
     app.run(host="0.0.0.0", port=port)
