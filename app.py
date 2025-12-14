@@ -8,8 +8,8 @@ from datetime import datetime
 # ==========================
 # ENV
 # ==========================
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-WEBHOOK_URL = os.environ["WEBHOOK_URL"]
+BOT_TOKEN = os.environ["BOT_TOKEN"]         # Telegram bot token
+WEBHOOK_URL = os.environ["WEBHOOK_URL"]     # Deploy qilingan loyihaning live linki, masalan: https://yourapp.railway.app
 ADMIN_CHAT_ID = int(os.environ["ADMIN_CHAT_ID"])
 CHANNEL_ID = os.environ["CHANNEL_ID"]
 
@@ -205,7 +205,7 @@ def home():
     return "Bot ishga tushdi!", 200
 
 # ==========================
-# Webhookni set qilish
+# Webhookni avtomatik set qilish
 # ==========================
 asyncio.run(app_builder.bot.set_webhook(f"{WEBHOOK_URL}/{BOT_TOKEN}"))
 
