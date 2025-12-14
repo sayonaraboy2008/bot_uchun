@@ -5,7 +5,8 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from dotenv import load_dotenv
 
-load_dotenv()  # .env fayldan o'qish
+# .env fayldan o'qish
+load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
@@ -14,11 +15,13 @@ PORT = int(os.environ.get("PORT", 5000))
 app = Flask(__name__)
 tg_app = Application.builder().token(BOT_TOKEN).build()
 
+# /start handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Bot Railway’da ishlayapti ✅")
 
 tg_app.add_handler(CommandHandler("start", start))
 
+# Telegram webhook
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 async def telegram_webhook():
     data = request.get_json(force=True)
@@ -26,6 +29,7 @@ async def telegram_webhook():
     await tg_app.update_queue.put(update)
     return "OK", 200
 
+# Home page
 @app.route("/")
 def home():
     return "Bot ishga tushdi", 200
